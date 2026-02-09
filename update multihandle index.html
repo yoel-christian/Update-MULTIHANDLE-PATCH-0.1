@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MultiHandle</title>
+
+    <!-- LIBRARY PREVIEW DOKUMEN -->
+    <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #e3f2fd;
+        }
+
+        /* HEADER */
+        .header {
+            background: linear-gradient(135deg, #1565c0, #1e88e5);
+            color: white;
+            padding: 18px;
+            text-align: center;
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .container {
+            padding: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        .box {
+            background: white;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+        }
+
+        .box h3 {
+            margin-top: 0;
+            background: #1e88e5;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        video, iframe {
+            width: 100%;
+            height: 220px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+
+        img {
+            width: 100%;
+            height: auto;
+            max-height: 300px;
+            object-fit: contain;
+            display: block;
+            margin: auto;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            border: 1px solid #bbb;
+            font-size: 14px;
+        }
+
+        textarea {
+            resize: vertical;
+        }
+
+        a {
+            color: #1565c0;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        #videoStatus {
+            font-size: 13px;
+            color: #444;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="header">MULTIHANDLE</div>
+
+<div class="container">
+
+    <!-- VIDEO -->
+    <div class="box">
+        <h3>Video</h3>
+
+        <input type="file" accept="video/*" onchange="bukaVideo(this.files[0])">
+        <input type="text" placeholder="Tempel URL YouTube di sini"
+               onchange="bukaYoutube(this.value)">
+
+        <p id="videoStatus">Pilih video lokal atau YouTube</p>
+
+        <video id="video" controls></video>
+
+        <iframe id="youtubeFrame"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen>
+        </iframe>
+    </div>
+
+    <!-- FILE -->
+    <div class="box">
+        <h3>File</h3>
+        <input type="file" onchange="bukaFile(this.files[0])">
+        <p><a id="fileLink" target="_blank"></a></p>
+        <iframe id="filePreview"></iframe>
+    </div>
+
+    <!-- FOTO -->
+    <div class="box">
+        <h3>Foto</h3>
+        <input type="file" accept="image/*" onchange="bukaFoto(this.files[0])">
+        <p><a id="fotoLink" target="_blank"></a></p>
+        <img id="foto">
+    </div>
+
+    <!-- CATATAN -->
+    <div class="box">
+        <h3>Catatan</h3>
+        <textarea rows="8" placeholder="Tulis catatan..."></textarea>
+    </div>
+
+</div>
+
+<script>
+// ================= VIDEO =================
+function bukaVideo(file) {
+    video.src = URL.createObjectURL(file);
+    videoStatus.innerText = "Video lokal siap diputar";
+}
+
+video.addEventListener("play", () => pauseYoutube());
+
+function bukaYoutube(url) {
+    let id = extractYoutubeID(url);
+    if (!id) return;
+    youtubeFrame.src = "https://www.youtube.com/embed/" + id;
+    videoStatus.innerText = "Video YouTube siap diputar";
+}
+
+function pauseYoutube() {
+    youtubeFrame.contentWindow?.postMessage(
+        '{"event":"command","func":"pauseVideo","args":""}', '*'
+    );
+}
+
+function extractYoutubeID(url) {
+    let r =
+        /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([^?&]+)/;
+    let m = url.match(r);
+    return m ? m[1] : null;
+}
+
+// ================= FOTO =================
+function bukaFoto(file) {
+    let url = URL.createObjectURL(file);
+    foto.src = url;
+    fotoLink.href = url;
+    fotoLink.innerText = "Buka: " + file.name;
+}
+
+// ================= FILE (PREVIEW AKTIF) =================
+function bukaFile(file) {
+    let url = URL.createObjectURL(file);
+    fileLink.href = url;
+    fileLink.innerText = "Buka: " + file.name;
+
+    filePreview.src = "";
+    filePreview.srcdoc = "";
+
+    if (file.type === "application/pdf") {
+        filePreview.src = url;
+    }
+
+    else if (file.name.endsWith(".docx")) {
+        let reader = new FileReader();
+        reader.onload = function(e) {
+            mammoth.convertToHtml({ arrayBuffer: e.target.result })
+                .then(result => {
+                    filePreview.srcdoc = result.value;
+                })
+                .catch(() => {
+                    filePreview.srcdoc = "Gagal membaca file DOCX";
+                });
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    else if (file.name.endsWith(".xlsx")) {
+        let reader = new FileReader();
+        reader.onload = function(e) {
+            let data = new Uint8Array(e.target.result);
+            let workbook = XLSX.read(data, { type: "array" });
+            let sheet = workbook.Sheets[workbook.SheetNames[0]];
+            filePreview.srcdoc = XLSX.utils.sheet_to_html(sheet);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    else if (file.type.startsWith("text/")) {
+        let reader = new FileReader();
+        reader.onload = e => {
+            filePreview.srcdoc =
+                "<pre style='white-space:pre-wrap'>" +
+                e.target.result +
+                "</pre>";
+        };
+        reader.readAsText(file);
+    }
+
+    else if (file.type.startsWith("image/")) {
+        filePreview.srcdoc =
+            "<img src='" + url + "' style='max-width:100%'>";
+    }
+
+    else {
+        filePreview.srcdoc =
+            "<b>Preview tidak tersedia</b><br>" +
+            "Format file belum didukung.";
+    }
+}
+</script>
+
+</body>
+</html>
